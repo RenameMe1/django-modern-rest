@@ -156,7 +156,7 @@ class SSEStreamingResponse(HttpResponseBase):
             return SSEvent(ErrorModel(detail=exception.payload), event='error')
         raise  # noqa: PLE0704
 
-    async def _events_pipeline(self) -> AsyncIterator[bytes]:  # noqa: C901
+    async def _events_pipeline(self) -> AsyncIterator[bytes]:
         # We want to close any async generators after they are fully used.
         # Why? Because they can be cancelled at any point
         # and not do any cleanup.
@@ -165,56 +165,56 @@ class SSEStreamingResponse(HttpResponseBase):
             if hasattr(self._streaming_content, 'aclose')
             else nullcontext()
         )
-        if self.ping_interval < 0:
-            raise Warning('Ping interval cannot be negative.')
 
-        if self.ping_interval <= 0:
-            async with context:
-                try:
-                    async for event in self._streaming_content:
-                        event = self._apply_event_pipeline(event)
-                        yield self.serializer.serialize(
-                            event,
-                            renderer=self.sse_renderer,
-                        )
-                except SSECloseConnectionError:
-                    self.close()
-        else:
-            event_task: asyncio.Task[SSE] | None = None
+        async with context:
 
-            async with context:
-                try:
-                    while True:
-                        if event_task is None:
-                            event_task = asyncio.create_task(self._next_event())
+            if self.ping_interval > 0:
+                stream_content = self._ping_stream
+            else:
+                stream_content = self._default_stream
 
-                        done, _ = await asyncio.wait(
-                            {event_task},
-                            timeout=self.ping_interval,
-                        )
+            try:
+                async for event in stream_content():
+                    yield event
+            except SSECloseConnectionError:
+                self.close()
 
-                        if not done:
-                            yield b'ping\r\n\r\n'
-                            continue
+    async def _default_stream(self) -> AsyncIterator[bytes]:
 
-                        try:
-                            event = event_task.result()
-                        except StopAsyncIteration:
-                            break
+        async for event in self._streaming_content:
+            event = self._apply_event_pipeline(event)
+            yield self.serializer.serialize(
+                event,
+                renderer=self.sse_renderer,
+            )
 
-                        event_task = None
-                        event = self._apply_event_pipeline(event)
-                        yield self.serializer.serialize(
-                            event,
-                            renderer=self.sse_renderer,
-                        )
-                except SSECloseConnectionError:
-                    self.close()
-                finally:
-                    if event_task is not None and not event_task.done():
-                        event_task.cancel()
-                        with contextlib.suppress(asyncio.CancelledError):
-                            await event_task
+    async def _ping_stream(self) -> AsyncIterator[bytes]:
+        event_task: asyncio.Task[SSE] | None = None
+
+        while True:
+            if event_task is None:
+                event_task = asyncio.create_task(self._next_event())
+
+            done, _ = await asyncio.wait(
+                {event_task},
+                timeout=self.ping_interval,
+            )
+
+            if not done:
+                yield b'ping\r\n\r\n'
+                continue
+
+            try:
+                event = event_task.result()
+            except StopAsyncIteration:
+                break
+
+            event_task = None
+            event = self._apply_event_pipeline(event)
+            yield self.serializer.serialize(
+                event,
+                renderer=self.sse_renderer,
+            )
 
     def _apply_event_pipeline(self, event: SSE) -> SSE:
         try:
