@@ -103,7 +103,6 @@ class SSEStreamingResponse(HttpResponseBase):
         else:
             self._pipeline = ()
         self.ping_interval = ping_interval
-        self._send_lock = asyncio.Lock()
 
     @override
     def __iter__(self) -> Iterator[bytes]:
