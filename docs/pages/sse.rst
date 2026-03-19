@@ -213,7 +213,7 @@ Let's model this with perfect type-safety and state-of-the-art OpenAPI schema.
 This will also generate a correct OpenAPI spec
 with all the logical cases covered.
 
-Users can also enable default ``ping`` events using ``ping_interval`` parameter. 
+Users can also enable default ``ping`` events using ``ping_interval`` parameter.
 
 .. literalinclude:: /examples/sse/event_ping.py
    :language: python

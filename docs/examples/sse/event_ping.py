@@ -1,6 +1,5 @@
 import asyncio
 from collections.abc import AsyncIterator
-from typing import Any
 
 from django.http import HttpRequest
 
