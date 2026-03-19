@@ -75,6 +75,7 @@ def sse(  # noqa: WPS211, WPS234
     ] = SSEStreamingResponse,
     metadata_cls: type[EndpointMetadata] = _SSEMetadata,
     auth: Sequence[AsyncAuth] | None = (),
+    ping_interval: float = 0,
 ) -> Callable[
     [
         Callable[
@@ -177,6 +178,7 @@ def sse(  # noqa: WPS211, WPS234
             SSE endpoints must use instances
             of :class:`~dmr.security.AsyncAuth`.
             Set it to ``None`` to disable auth for this SSE controller.
+        ping_interval: interval
 
     .. important::
 
@@ -233,6 +235,7 @@ def sse(  # noqa: WPS211, WPS234
                 (metadata_cls,),
                 {'default_renderer': regular_renderer},
             ),
+            ping_interval=ping_interval,
         )
 
     return decorator
@@ -263,6 +266,7 @@ def _build_controller(  # noqa: WPS211, WPS234
     auth: Sequence[AsyncAuth] | None,
     event_model: Any,
     custom_metadata_cls: type[EndpointMetadata],
+    ping_interval: float,
 ) -> type[Controller[_SerializerT]]:
     class SSEController(  # noqa: WPS431
         Controller[serializer],  # type: ignore[valid-type]
@@ -315,6 +319,7 @@ def _build_controller(  # noqa: WPS211, WPS234
                 sse_renderer=sse_renderer,
                 headers=response.headers,
                 validate_events=validate_events,
+                ping_interval=ping_interval,
             )
             for cookie_key, cookie in (response.cookies or {}).items():
                 streaming_response.set_cookie(

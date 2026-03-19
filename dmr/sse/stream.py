@@ -1,5 +1,5 @@
-import datetime as dt
-from asyncio import Lock
+import asyncio
+import contextlib
 from collections.abc import (
     AsyncIterator,
     Callable,
@@ -62,7 +62,7 @@ class SSEStreamingResponse(HttpResponseBase):
         *,
         headers: Mapping[str, str] | None = None,
         validate_events: bool = True,
-        ping_interval: float | None = None,
+        ping_interval: float = 0,
     ) -> None:
         """
         Create the SSE streaming response.
@@ -76,6 +76,7 @@ class SSEStreamingResponse(HttpResponseBase):
             headers: Headers to be set on the response.
             validate_events: Should all produced events be validated
                 against *event_model*.
+            ping_interval: interval
 
         """
         headers = {} if headers is None else dict(headers)
@@ -103,7 +104,7 @@ class SSEStreamingResponse(HttpResponseBase):
         else:
             self._pipeline = ()
         self.ping_interval = ping_interval
-        self._send_lock = Lock()
+        self._send_lock = asyncio.Lock()
 
     @override
     def __iter__(self) -> Iterator[bytes]:
@@ -155,7 +156,7 @@ class SSEStreamingResponse(HttpResponseBase):
             return SSEvent(ErrorModel(detail=exception.payload), event='error')
         raise  # noqa: PLE0704
 
-    async def _events_pipeline(self) -> AsyncIterator[bytes]:
+    async def _events_pipeline(self) -> AsyncIterator[bytes]:  # noqa: C901
         # We want to close any async generators after they are fully used.
         # Why? Because they can be cancelled at any point
         # and not do any cleanup.
@@ -164,29 +165,56 @@ class SSEStreamingResponse(HttpResponseBase):
             if hasattr(self._streaming_content, 'aclose')
             else nullcontext()
         )
-        async with context:
-            try:
-                while True:
-                    await self._send_lock.acquire()
-                    start = dt.datetime.now()
+        if self.ping_interval < 0:
+            raise Warning('Ping interval cannot be negative.')
 
-                    event = await anext(self._streaming_content)
-                    event = self._apply_event_pipeline(event)
+        if self.ping_interval <= 0:
+            async with context:
+                try:
+                    async for event in self._streaming_content:
+                        event = self._apply_event_pipeline(event)
+                        yield self.serializer.serialize(
+                            event,
+                            renderer=self.sse_renderer,
+                        )
+                except SSECloseConnectionError:
+                    self.close()
+        else:
+            event_task: asyncio.Task[SSE] | None = None
 
-                    send_time = dt.datetime.now() - start
+            async with context:
+                try:
+                    while True:
+                        if event_task is None:
+                            event_task = asyncio.create_task(self._next_event())
 
-                    if self.ping_interval < send_time.total_seconds():
-                        self._send_lock.release()
+                        done, _ = await asyncio.wait(
+                            {event_task},
+                            timeout=self.ping_interval,
+                        )
 
-                    if not self._send_lock.locked:
-                        yield self._ping()
+                        if not done:
+                            yield b'ping\r\n\r\n'
+                            continue
 
-                    yield self.serializer.serialize(
-                        event,
-                        renderer=self.sse_renderer,
-                    )
-            except SSECloseConnectionError:
-                self.close()
+                        try:
+                            event = event_task.result()
+                        except StopAsyncIteration:
+                            break
+
+                        event_task = None
+                        event = self._apply_event_pipeline(event)
+                        yield self.serializer.serialize(
+                            event,
+                            renderer=self.sse_renderer,
+                        )
+                except SSECloseConnectionError:
+                    self.close()
+                finally:
+                    if event_task is not None and not event_task.done():
+                        event_task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await event_task
 
     def _apply_event_pipeline(self, event: SSE) -> SSE:
         try:
@@ -199,3 +227,6 @@ class SSEStreamingResponse(HttpResponseBase):
         except Exception as exc:
             event = self.handle_event_error(event, exc)
         return event
+
+    async def _next_event(self) -> SSE:
+        return await anext(self._streaming_content)
