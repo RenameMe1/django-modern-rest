@@ -127,7 +127,7 @@ So, any errors that need to be handled, are up to users to handle:
 
 If you need to imediatelly close the response stream, you can raise
 :exc:`~dmr.sse.exceptions.SSECloseConnectionError`
-nside the events producing async iterator.
+inside the events producing async iterator.
 
 Handling disconnects
 ~~~~~~~~~~~~~~~~~~~~
@@ -225,6 +225,14 @@ you can fully customize it using your serializer's official docs.
 For example, ``pydantic`` uses ``__get_pydantic_json_schema__`` method
 for `this purpose <https://docs.pydantic.dev/latest/concepts/json_schema/#implementing-__get_pydantic_core_schema__>`_.
 
+.. note::
+
+  When creating custom event types, don't forget to validate
+  that ``id`` and ``event`` fields do not contain: ``'\x00'``,
+  ``'\n'``, and ``'\r'`` chars.
+
+  Use :func:`dmr.sse.validation.check_event_field` to do that.
+
 
 API Reference
 -------------
@@ -266,6 +274,10 @@ Validation
 ~~~~~~~~~~
 
 .. autofunction:: dmr.sse.validation.validate_event_type
+
+.. autofunction:: dmr.sse.validation.validate_event_data
+
+.. autofunction:: dmr.sse.validation.check_event_field
 
 Exceptions
 ~~~~~~~~~~

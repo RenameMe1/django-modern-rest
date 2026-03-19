@@ -10,6 +10,7 @@ from typing import (
 )
 
 from django.http import HttpRequest, HttpResponse, HttpResponseBase
+from django.urls import URLPattern
 from django.utils.functional import classproperty
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
@@ -254,7 +255,7 @@ class Blueprint(Generic[_SerializerT_co]):  # noqa: WPS214
         self,
         error: str | Exception,
         *,
-        loc: str | None = None,
+        loc: str | list[str | int] | None = None,
         error_type: str | ErrorType | None = None,
     ) -> Any:  # `Any`, so we can change the return type in subclasses.
         """
@@ -264,7 +265,8 @@ class Blueprint(Generic[_SerializerT_co]):  # noqa: WPS214
             error: A serialization exception like a validation error or
                 a ``dmr.exceptions.DataParsingError``.
             loc: Location where this error happened.
-                Like "headers" or "field_name".
+                Like ``"headers"``, or ``"field_name"``,
+                or ``["parsed_headers", "header_name"]``.
             error_type: Optional type of the error for extra metadata.
 
         Returns:
@@ -608,10 +610,21 @@ class Controller(Blueprint[_SerializerT_co], View):  # noqa: WPS214
         )
 
     @classmethod
-    def get_path_item(cls, path: str, context: OpenAPIContext) -> PathItem:
+    def get_path_item(
+        cls,
+        path: str,
+        pattern: URLPattern,
+        context: OpenAPIContext,
+    ) -> PathItem:
         """Generate OpenAPI spec for path items."""
         operations: dict[str, Any] = {
-            method.lower(): endpoint.get_schema(path, cls.serializer, context)
+            method.lower(): endpoint.get_schema(
+                path,
+                pattern,
+                cls.__qualname__,
+                cls.serializer,
+                context,
+            )
             for method, endpoint in cls.api_endpoints.items()
         }
         return PathItem(

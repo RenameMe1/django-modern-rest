@@ -8,9 +8,21 @@
     },
     "openapi": "3.1.0",
     "paths": {
-      "/per_blueprint/": {
+      "/per_blueprint/{kwarg_id}": {
         "get": {
-          "operationId": "getPerBlueprint",
+          "operationId": "getComposedPerblurprintPerBlueprintKwargId",
+          "parameters": [
+            {
+              "deprecated": false,
+              "name": "kwarg_id",
+              "in": "path",
+              "schema": {
+                "type": "string",
+                "title": "Kwarg Id"
+              },
+              "required": true
+            }
+          ],
           "responses": {
             "200": {
               "description": "OK",
@@ -26,7 +38,97 @@
           "deprecated": false
         },
         "post": {
-          "operationId": "postPerBlueprint",
+          "operationId": "postComposedPerblurprintPerBlueprintKwargId",
+          "parameters": [
+            {
+              "deprecated": false,
+              "name": "kwarg_id",
+              "in": "path",
+              "schema": {
+                "type": "string",
+                "title": "Kwarg Id"
+              },
+              "required": true
+            }
+          ],
+          "responses": {
+            "201": {
+              "description": "Created",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/_UserModel"
+                  }
+                }
+              }
+            }
+          },
+          "deprecated": false
+        }
+      },
+      "/articles/{other}/{kwarg_id}/": {
+        "get": {
+          "operationId": "getComposedPerblurprintArticlesOtherKwargId",
+          "parameters": [
+            {
+              "deprecated": false,
+              "name": "other",
+              "in": "path",
+              "schema": {
+                "type": "string",
+                "title": "Other"
+              },
+              "required": true
+            },
+            {
+              "deprecated": false,
+              "name": "kwarg_id",
+              "in": "path",
+              "schema": {
+                "type": "string",
+                "title": "Kwarg Id"
+              },
+              "required": true
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/_UserModel"
+                  }
+                }
+              }
+            }
+          },
+          "deprecated": false
+        },
+        "post": {
+          "operationId": "postComposedPerblurprintArticlesOtherKwargId",
+          "parameters": [
+            {
+              "deprecated": false,
+              "name": "other",
+              "in": "path",
+              "schema": {
+                "type": "string",
+                "title": "Other"
+              },
+              "required": true
+            },
+            {
+              "deprecated": false,
+              "name": "kwarg_id",
+              "in": "path",
+              "schema": {
+                "type": "string",
+                "title": "Kwarg Id"
+              },
+              "required": true
+            }
+          ],
           "responses": {
             "201": {
               "description": "Created",
@@ -75,7 +177,7 @@
     "paths": {
       "/per_controller/": {
         "get": {
-          "operationId": "getPerController",
+          "operationId": "getPercontrollerPerController",
           "responses": {
             "200": {
               "description": "OK",
@@ -96,7 +198,7 @@
           ]
         },
         "post": {
-          "operationId": "postPerController",
+          "operationId": "postPercontrollerPerController",
           "responses": {
             "201": {
               "description": "Created",
@@ -157,7 +259,7 @@
     "paths": {
       "/per_endpoint/": {
         "get": {
-          "operationId": "getPerEndpoint",
+          "operationId": "getPerendpointPerEndpoint",
           "responses": {
             "200": {
               "description": "OK",
@@ -193,7 +295,7 @@
           "deprecated": false
         },
         "post": {
-          "operationId": "postPerEndpoint",
+          "operationId": "postPerendpointPerEndpoint",
           "responses": {
             "201": {
               "description": "Created",

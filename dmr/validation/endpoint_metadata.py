@@ -449,16 +449,11 @@ class EndpointMetadataBuilder:  # noqa: WPS214
         settings_auth: Sequence[SyncAuth | AsyncAuth] = resolve_setting(
             Settings.auth,
         )
-        if not isinstance(settings_auth, Sequence):  # pyright: ignore[reportUnnecessaryIsInstance]
-            raise EndpointMetadataError(
-                'Settings.auth must be a list of auth instances. '
-                f'Got: {settings_auth!r}',
-            )
 
         auth = [
-            *payload_auth,  # pyrefly: ignore[not-iterable]
-            *blueprint_auth,  # pyrefly: ignore[not-iterable]
-            *(self.controller_cls.auth or ()),  # pyrefly: ignore[not-iterable]
+            *payload_auth,
+            *blueprint_auth,
+            *(self.controller_cls.auth or ()),
             # TODO: maybe we should wrap auth handlers in global settings
             # in `sync_to_async` and `async_to_sync`?
             *settings_auth,
@@ -594,7 +589,7 @@ class EndpointMetadataBuilder:  # noqa: WPS214
         endpoint: str,
     ) -> None:
         if payload.headers is not None and any(
-            isinstance(header, HeaderSpec) and not header.schema_only
+            isinstance(header, HeaderSpec) and not header.skip_validation
             for header in payload.headers.values()
         ):
             raise EndpointMetadataError(
@@ -602,10 +597,10 @@ class EndpointMetadataBuilder:  # noqa: WPS214
                 f'it is not possible to use `HeaderSpec` '
                 'because there are no existing headers to describe. Use '
                 '`NewHeader` to add new headers to the response. '
-                'Or add `schema_only=True` to `HeaderSpec`',
+                'Or add `skip_validation=True` to `HeaderSpec`',
             )
         if payload.cookies is not None and any(
-            isinstance(cookie, CookieSpec) and not cookie.schema_only
+            isinstance(cookie, CookieSpec) and not cookie.skip_validation
             for cookie in payload.cookies.values()
         ):
             raise EndpointMetadataError(
@@ -613,7 +608,7 @@ class EndpointMetadataBuilder:  # noqa: WPS214
                 f'it is not possible to use `CookieSpec` '
                 'because there are no existing cookies to describe. Use '
                 '`NewCookie` to add new cookies to the response. '
-                'Or add `schema_only=True` to `CookieSpec`',
+                'Or add `skip_validation=True` to `CookieSpec`',
             )
 
     def _validate_return_annotation(

@@ -1,5 +1,4 @@
 import abc
-import dataclasses
 from collections.abc import Mapping
 from http import HTTPStatus
 from typing import (
@@ -24,6 +23,7 @@ from dmr.files import FileBody
 from dmr.internal.django import (
     convert_multi_value_dict,
     extract_files_metadata,
+    parse_headers,
 )
 from dmr.metadata import (
     EndpointMetadata,
@@ -31,19 +31,19 @@ from dmr.metadata import (
     ResponseSpecProvider,
 )
 from dmr.negotiation import get_conditional_types
-from dmr.openapi.core.context import OpenAPIContext
-from dmr.openapi.mappers.parameters import parameters_spec
-from dmr.openapi.objects.media_type import MediaType
-from dmr.openapi.objects.parameter import Parameter
-from dmr.openapi.objects.reference import Reference
-from dmr.openapi.objects.request_body import RequestBody
-from dmr.openapi.objects.schema import Schema
+from dmr.openapi.objects import (
+    MediaType,
+    Parameter,
+    Reference,
+    RequestBody,
+)
 from dmr.parsers import SupportsDjangoDefaultParsing, SupportsFileParsing
 from dmr.types import TypeVarInference, infer_bases, is_safe_subclass
 
 if TYPE_CHECKING:
     from dmr.controller import Blueprint, Controller
     from dmr.endpoint import Endpoint
+    from dmr.openapi.core.context import OpenAPIContext
     from dmr.serializer import BaseSerializer
 
 _QueryT = TypeVar('_QueryT')
@@ -223,7 +223,7 @@ class ComponentParser(ResponseSpecProvider):
         model: Any,
         metadata: EndpointMetadata,
         serializer: type['BaseSerializer'],
-        context: OpenAPIContext,
+        context: 'OpenAPIContext',
     ) -> list[Parameter | Reference] | RequestBody:
         """Generate OpenAPI spec for component."""
         raise NotImplementedError
@@ -254,50 +254,6 @@ class Query(ComponentParser, Generic[_QueryT]):
     into ``ProductQuery`` model.
 
     You can access parsed query as ``self.parsed_query`` attribute.
-
-    Internally query is represented
-    as :class:`django.utils.datastructures.MultiValueDict` in Django.
-    It supports several values for a single key.
-
-    Users can customize how they want their values:
-    as single values or as lists of values.
-    To do so, use ``__dmr_force_list__`` optional attribute.
-    Set it to :class:`frozenset` of values that need to be lists.
-    All other values will be regular single values:
-
-    .. code:: python
-
-        >>> class SearchQuery(pydantic.BaseModel):
-        ...     __dmr_force_list__: ClassVar[frozenset[str]] = frozenset((
-        ...         'query',
-        ...     ))
-        ...
-        ...     query: list[str]
-        ...     reversed: bool
-
-    This will parse a query like ``?query=text&query=match&reversed=1``
-    into the provided model.
-
-    We don't inference this value in any way, it is up to users to set.
-    Inspecting annotations is hard and produce a lot of errors.
-
-    Additionally, users can customize whether the string literal ``'null'``
-    should be cast to Python's ``None``.
-    To do so, set the field names that should do
-    that into ``__dmr_cast_null__``.
-    By default, it is empty.
-
-    .. code:: python
-
-        >>> from typing import ClassVar
-
-        >>> class SearchQuery(pydantic.BaseModel):
-        ...     __dmr_cast_null__: ClassVar[frozenset[str]] = frozenset(
-        ...         ('query',),
-        ...     )
-        ...
-        ...     query: str | None  # will be `None` if `?query=null` is sent
-
     """
 
     parsed_query: _QueryT
@@ -335,9 +291,9 @@ class Query(ComponentParser, Generic[_QueryT]):
         model: Any,
         metadata: EndpointMetadata,
         serializer: type['BaseSerializer'],
-        context: OpenAPIContext,
+        context: 'OpenAPIContext',
     ) -> list[Parameter | Reference] | RequestBody:
-        return parameters_spec(
+        return context.generators.parameter(
             model,
             serializer,
             context,
@@ -370,6 +326,12 @@ class Body(ComponentParser, Generic[_BodyT]):
     ``UserCreateInput`` model.
 
     You can access parsed body as ``self.parsed_body`` attribute.
+
+    When working with parsers that support
+    :class:`dmr.parsers.SupportsDjangoDefaultParsing` interface,
+    you can specify ``__dmr_split_commas__`` attribute:
+    it must contain a :class:`frozenset` of field aliases
+    that will be split by ``','`` char.
     """
 
     parsed_body: _BodyT
@@ -395,7 +357,28 @@ class Body(ComponentParser, Generic[_BodyT]):
                 request=blueprint.request,
                 model=field_model,
             )
-            return blueprint.request.POST
+            # Django's native parsing is a mess:
+            force_list: frozenset[str] = getattr(
+                field_model,
+                '__dmr_force_list__',
+                frozenset(),
+            )
+            cast_null: frozenset[str] = getattr(
+                field_model,
+                '__dmr_cast_null__',
+                frozenset(),
+            )
+            split_commas: frozenset[str] = getattr(
+                field_model,
+                '__dmr_split_commas__',
+                frozenset(),
+            )
+            return convert_multi_value_dict(
+                blueprint.request.POST,
+                force_list=force_list,
+                cast_null=cast_null,
+                split_commas=split_commas,
+            )
 
         try:
             return blueprint.serializer.deserialize(
@@ -427,7 +410,7 @@ class Body(ComponentParser, Generic[_BodyT]):
         model: Any,
         metadata: EndpointMetadata,
         serializer: type['BaseSerializer'],
-        context: OpenAPIContext,
+        context: 'OpenAPIContext',
     ) -> list[Parameter | Reference] | RequestBody:
         schema = context.generators.schema(model, serializer)
         conditional_schemas = {
@@ -491,7 +474,15 @@ class Headers(ComponentParser, Generic[_HeadersT]):
         *,
         field_model: Any,
     ) -> Any:
-        return blueprint.request.headers
+        split_commas: frozenset[str] = getattr(
+            field_model,
+            '__dmr_split_commas__',
+            frozenset(),
+        )
+        return parse_headers(
+            blueprint.request.headers,
+            split_commas=split_commas,
+        )
 
     @override
     @classmethod
@@ -500,9 +491,9 @@ class Headers(ComponentParser, Generic[_HeadersT]):
         model: Any,
         metadata: EndpointMetadata,
         serializer: type['BaseSerializer'],
-        context: OpenAPIContext,
+        context: 'OpenAPIContext',
     ) -> list[Parameter | Reference] | RequestBody:
-        return parameters_spec(
+        return context.generators.parameter(
             model,
             serializer,
             context,
@@ -623,9 +614,9 @@ class Path(ComponentParser, Generic[_PathT]):
         model: Any,
         metadata: EndpointMetadata,
         serializer: type['BaseSerializer'],
-        context: OpenAPIContext,
+        context: 'OpenAPIContext',
     ) -> list[Parameter | Reference] | RequestBody:
-        return parameters_spec(
+        return context.generators.parameter(
             model,
             serializer,
             context,
@@ -686,9 +677,9 @@ class Cookies(ComponentParser, Generic[_CookiesT]):
         model: Any,
         metadata: EndpointMetadata,
         serializer: type['BaseSerializer'],
-        context: OpenAPIContext,
+        context: 'OpenAPIContext',
     ) -> list[Parameter | Reference] | RequestBody:
-        return parameters_spec(
+        return context.generators.parameter(
             model,
             serializer,
             context,
@@ -815,7 +806,7 @@ class FileMetadata(ComponentParser, Generic[_FileMetadataT]):
         Validates that the component is correctly defined.
 
         This component requires at least one
-        :class:`dmr.parsers.SupportsFileParser` instance
+        :class:`dmr.parsers.SupportsFileParsing` instance
         to be present in parsers.
 
         Runs in import time.
@@ -852,7 +843,7 @@ class FileMetadata(ComponentParser, Generic[_FileMetadataT]):
         model: Any,
         metadata: EndpointMetadata,
         serializer: type['BaseSerializer'],
-        context: OpenAPIContext,
+        context: 'OpenAPIContext',
     ) -> list[Parameter | Reference] | RequestBody:
         schema = context.generators.schema(
             model,
@@ -870,11 +861,10 @@ class FileMetadata(ComponentParser, Generic[_FileMetadataT]):
         }
         return RequestBody(
             content={
-                parser.content_type: MediaType(
-                    schema=cls._process_schema(
-                        conditional_schemas.get(parser.content_type, schema),
-                        context,
-                    ),
+                parser.content_type: cls.schema_metadata.media_type(
+                    conditional_schemas.get(parser.content_type, schema),
+                    model,
+                    context,
                 )
                 for parser in metadata.parsers.values()
             },
@@ -882,19 +872,4 @@ class FileMetadata(ComponentParser, Generic[_FileMetadataT]):
             description=context.registries.schema.maybe_resolve_reference(
                 schema,
             ).description,
-        )
-
-    @classmethod
-    def _process_schema(
-        cls,
-        schema: Schema | Reference,
-        context: OpenAPIContext,
-    ) -> Schema:
-        schema = context.registries.schema.maybe_resolve_reference(schema)
-        return dataclasses.replace(
-            schema,
-            properties={
-                property_name: cls.schema_metadata.schema()
-                for property_name in (schema.properties or [])
-            },
         )

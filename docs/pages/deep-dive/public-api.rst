@@ -101,6 +101,8 @@ Routing
 
 .. autofunction:: dmr.routing.build_404_handler
 
+.. autofunction:: dmr.routing.build_500_handler
+
 .. autofunction:: dmr.routing.path
 
 
@@ -205,22 +207,3 @@ Msgspec
 
 .. autoclass:: dmr.plugins.msgspec.schema.MsgspecSchemaGenerator
   :members:
-
-
-Files
------
-
-.. autoclass:: dmr.files.FileBody
-  :members:
-
-
-Auth
-----
-
-.. autoclass:: dmr.security.SyncAuth
-  :members:
-  :inherited-members:
-
-.. autoclass:: dmr.security.AsyncAuth
-  :members:
-  :inherited-members:

@@ -1,5 +1,6 @@
 import inspect
 from collections.abc import Awaitable, Callable, Mapping, Sequence, Set
+from functools import wraps
 from http import HTTPStatus
 from typing import (
     TYPE_CHECKING,
@@ -10,6 +11,7 @@ from typing import (
 )
 
 from django.http import HttpResponse, HttpResponseBase
+from django.urls import URLPattern
 from typing_extensions import ParamSpec, Protocol, TypeVar, deprecated
 
 from dmr.cookies import CookieSpec, NewCookie
@@ -23,7 +25,6 @@ from dmr.exceptions import (
 from dmr.headers import HeaderSpec, NewHeader
 from dmr.metadata import EndpointMetadata, ResponseSpec
 from dmr.negotiation import RequestNegotiator, ResponseNegotiator
-from dmr.openapi.core.context import OpenAPIContext
 from dmr.openapi.objects import (
     Callback,
     ExternalDocumentation,
@@ -49,6 +50,7 @@ from dmr.validation import (
 
 if TYPE_CHECKING:
     from dmr.controller import Blueprint, Controller
+    from dmr.openapi.core.context import OpenAPIContext
 
 
 class Endpoint:  # noqa: WPS214
@@ -264,11 +266,21 @@ class Endpoint:  # noqa: WPS214
     def get_schema(
         self,
         path: str,
+        pattern: URLPattern,
+        controller_name: str,
         serializer: type[BaseSerializer],
         context: 'OpenAPIContext',
     ) -> Operation:
         """Builde an OpenAPI Operation from an endpoint."""
+        operation_id = self.get_operation_id(
+            path,
+            controller_name,
+            serializer,
+            context,
+        )
         request_body, params_list = context.generators.component_parsers(
+            operation_id,
+            pattern,
             self.metadata,
             serializer,
         )
@@ -286,7 +298,7 @@ class Endpoint:  # noqa: WPS214
             external_docs=self.metadata.external_docs,
             servers=self.metadata.servers,
             callbacks=self.metadata.callbacks,
-            operation_id=self.get_operation_id(path, serializer, context),
+            operation_id=operation_id,
             request_body=request_body,
             responses=context.generators.response(self.metadata, serializer),
             parameters=params_list,
@@ -295,12 +307,14 @@ class Endpoint:  # noqa: WPS214
     def get_operation_id(
         self,
         path: str,
+        controller_name: str,
         serializer: type[BaseSerializer],
         context: 'OpenAPIContext',
     ) -> str:
         """Customize how OperationId is generated for the OpenAPI."""
         return context.generators.operation_id(
             path,
+            controller_name,
             self.metadata,
             serializer,
         )
@@ -310,6 +324,7 @@ class Endpoint:  # noqa: WPS214
         func: Callable[..., Any],
     ) -> Callable[..., Awaitable[HttpResponseBase]]:
         # NOTE: if you change something here, also change in `_sync_endpoint`
+        @wraps(func)
         async def decorator(
             controller: 'Controller[BaseSerializer]',
             *args: Any,
@@ -349,6 +364,7 @@ class Endpoint:  # noqa: WPS214
         func: Callable[..., Any],
     ) -> Callable[..., HttpResponseBase]:
         # NOTE: if you change something here, also change in `_async_endpoint`
+        @wraps(func)
         def decorator(
             controller: 'Controller[BaseSerializer]',
             *args: Any,

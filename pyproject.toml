@@ -7,7 +7,7 @@ build-backend = "poetry.core.masonry.api"
 name = "django-modern-rest"
 description = "Modern REST framework for Django with types and async support"
 license = "MIT"
-version = "0.1.0"
+version = "0.3.0"
 requires-poetry = ">=2.3"
 
 authors = [
@@ -67,11 +67,11 @@ openapi = ["openapi-spec-validator", "polyfactory"]
 
 [tool.poetry.group.dev.dependencies]
 django = "^5.2"
-django-stubs = { version = "5.2.9", extras = ["compatible-mypy"] }
+django-stubs = { version = "6.0.0", extras = ["compatible-mypy"] }
 types-docutils = "^0.22"
 types-xmltodict = "^1.0"
 pyright = "^1.1"
-pyrefly = "^0.55"
+pyrefly = "^0.57"
 
 codespell = "^2.4"
 wemake-python-styleguide = "^1.6"

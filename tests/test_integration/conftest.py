@@ -1,0 +1,16 @@
+import pytest
+from django.conf import LazySettings
+
+from dmr.settings import Settings
+
+
+@pytest.fixture(autouse=True, params=[True, False])
+def _modify_integration_settings(
+    settings: LazySettings,
+    request: pytest.FixtureRequest,
+    dmr_clean_settings: None,
+) -> None:
+    # Django common settings:
+    settings.DEBUG = request.param  # We run tests in both modes.
+    # Our own settings:
+    settings.DMR_SETTINGS = {Settings.openapi_examples_seed: 1}

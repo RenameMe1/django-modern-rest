@@ -15,8 +15,8 @@ import json
 import logging
 import multiprocessing
 import os
-import platform
 import re
+import shlex
 import socket
 import subprocess  # noqa: S404
 import sys
@@ -52,13 +52,29 @@ from sphinx.application import Sphinx
 from sphinx.directives.code import LiteralInclude as _LiteralInclude
 from typing_extensions import override
 
+from dmr.plugins.pydantic import PydanticSerializer
+from dmr.routing import build_404_handler, build_500_handler
 from dmr.settings import Settings, clear_settings_cache
 
 if TYPE_CHECKING:
     from sphinx.writers.html5 import HTML5Translator
 
-if platform.system() in {'Darwin', 'Linux'}:
-    multiprocessing.set_start_method('fork', force=True)
+
+def _get_mp_context() -> Any:
+    default_start_method = 'spawn' if sys.platform == 'win32' else 'fork'
+    start_method = os.environ.get('DMR_SPAWN_METHOD', default_start_method)
+    try:
+        return multiprocessing.get_context(start_method)
+    except ValueError as error:
+        raise RuntimeError(
+            (
+                f'Unsupported multiprocessing start method: {start_method!r}. '
+                'Set DMR_SPAWN_METHOD to a valid value for this platform.'
+            ),
+        ) from error
+
+
+_MP_CONTEXT = _get_mp_context()
 
 _PATH_TO_TMP_EXAMPLES: Final = '_build/_tmp_example/'
 _RGX_RUN: Final = re.compile(r'# +?run:(.*)')
@@ -214,7 +230,7 @@ class _BaseBuilder:
         settings.configure(
             ROOT_URLCONF='url_conf',
             ALLOWED_HOSTS=['*'],
-            DEBUG=True,
+            DEBUG=False,
             SECRET_KEY='dummy-key-for-examples',  # noqa: S106
             INSTALLED_APPS=[
                 'django.contrib.auth',
@@ -264,6 +280,14 @@ class _BaseBuilder:
     def _create_urlpatterns(self, module: ModuleType) -> None:
         url_conf_module = ModuleType('url_conf')
         url_conf_module.urlpatterns = self._generate_urls(module)  # type: ignore[attr-defined]
+        url_conf_module.handler404 = build_404_handler(  # type: ignore[attr-defined]
+            'api/',
+            serializer=PydanticSerializer,
+        )
+        url_conf_module.handler500 = build_500_handler(  # type: ignore[attr-defined]
+            'api/',
+            serializer=PydanticSerializer,
+        )
         sys.modules['url_conf'] = url_conf_module
 
     def _generate_urls(self, module: ModuleType) -> list[URLPattern]:
@@ -338,40 +362,66 @@ def _run_app(
     """Start a Django app on an available port."""
     restart_duration = 0.2
     port = _get_available_port()
-    app = builder(path, config).build_app()
-
+    # Needed by autodoc imports in the parent process.
+    builder(path, config)._configure_settings()  # noqa: SLF001
     attempts = 0
     while attempts < 100:
-        proc = multiprocessing.Process(target=_run_app_worker, args=(app, port))
+        proc = _MP_CONTEXT.Process(
+            target=_run_app_worker,
+            args=(path, config, builder, port),
+        )
         proc.start()
 
         try:
-            _wait_for_app_startup(port)
+            _wait_for_app_startup(port, proc)
         except _StartupError:
+            _shutdown_process(proc)
             time.sleep(restart_duration)
             attempts += 1
             port = _get_available_port()
-        else:
+            continue
+
+        try:
             yield port
-            break
         finally:
-            proc.kill()
-    else:
-        raise _StartupError(str(path))
+            _shutdown_process(proc)
+        return
+    raise _StartupError(str(path))
 
 
-def _run_app_worker(app: ASGIHandler, port: int) -> None:
+def _run_app_worker(
+    path: Path,
+    config: _AppRunArgs,
+    builder: type[_BaseBuilder],
+    port: int,
+) -> None:
+    app = builder(path, config).build_app()
     with redirect_stderr(Path(os.devnull).open(encoding='utf-8')):
         uvicorn.run(app, port=port, access_log=False)
+
+
+def _shutdown_process(proc: multiprocessing.Process) -> None:
+    if proc.is_alive():
+        proc.terminate()
+        proc.join(timeout=1.0)
+    if proc.is_alive():
+        proc.kill()
+        proc.join(timeout=1.0)
+    else:
+        proc.join(timeout=0)
 
 
 def _get_module_name(file_path: Path) -> str:
     return str(file_path.with_suffix('')).replace(os.sep, '.')
 
 
-def _wait_for_app_startup(port: int) -> None:
+def _wait_for_app_startup(port: int, proc: multiprocessing.Process) -> None:
     """Wait for app to start up and become responsive."""
     for _ in range(100):
+        if proc.exitcode is not None:
+            raise _StartupError(
+                f'App worker exited during startup with {proc.exitcode}',
+            )
         try:
             httpx.get(f'http://127.0.0.1:{port}', timeout=0.1)
         except httpx.TransportError:
@@ -440,6 +490,7 @@ def _exec_examples(app_file: Path, run_configs: list[_AppRunArgs]) -> str:
     for run_args in run_configs:
         url_path = _get_url_path_from_run_args(run_args)
         with _run_app(app_file, run_args, _AppBuilder) as port:
+            clear_settings_cache()
             example_result = _process_single_example(
                 app_file,
                 run_args,
@@ -515,7 +566,7 @@ def _process_single_example(
             )
         return ''
 
-    clean_args_string = ' '.join(clean_args)
+    clean_args_string = shlex.join(clean_args)
     return '\n'.join((f'$ {clean_args_string}', *stdout))
 
 
@@ -576,6 +627,8 @@ def _build_curl_request(
     url_path: str,
 ) -> tuple[_CurlArgs, _CurlCleanArgs]:
     query = run_args.pop('query', '')
+    if query and not query.startswith('?'):
+        raise ValueError(f'{query!r} must start with "?"')
     args = [
         'curl',
         '-v',
@@ -591,6 +644,7 @@ def _build_curl_request(
     _add_method(args, clean_args, run_args)
     _add_body_and_content_type(app_file, args, clean_args, run_args)
     _add_headers(args, clean_args, run_args)
+    _add_cookies(args, clean_args, run_args)
 
     return args, clean_args
 
@@ -615,7 +669,7 @@ def _add_method(
     clean_args.extend(['-X', method])
 
 
-def _add_body_and_content_type(  # noqa: C901, WPS213, WPS231
+def _add_body_and_content_type(  # noqa: C901, WPS210, WPS213, WPS231
     app_file: Path,
     args: list[str],
     clean_args: list[str],
@@ -645,7 +699,12 @@ def _add_body_and_content_type(  # noqa: C901, WPS213, WPS231
         clean_args.extend(['-d', body_data])
     elif content_type == 'multipart/form-data':
         for body_key, body_value in run_args.get('body', {}).items():
-            body_args = ['-F', f'{body_key}={body_value}']
+            if isinstance(body_value, list):
+                body_args = []
+                for body_subvalue in body_value:
+                    body_args.extend(['-F', f'{body_key}={body_subvalue}'])
+            else:
+                body_args = ['-F', f'{body_key}={body_value}']
             args.extend(body_args)
             clean_args.extend(body_args)
         for body_key, body_value in run_args.get('files', {}).items():
@@ -666,9 +725,26 @@ def _add_headers(
     run_args: _AppRunArgs,
 ) -> None:
     header_flag = '-H'
-    for header_name, header_value in run_args.get('headers', {}).items():
+
+    headers = run_args.get('headers', {})
+    if isinstance(headers, dict):
+        headers = headers.items()
+    for header_name, header_value in headers:
         args.extend([header_flag, f'{header_name}: {header_value}'])
         clean_args.extend([header_flag, f'{header_name}: {header_value}'])
+
+
+def _add_cookies(
+    args: list[str],
+    clean_args: list[str],
+    run_args: _AppRunArgs,
+) -> None:
+    cookie_flag = '--cookie'
+
+    cookies = run_args.get('cookies', {})
+    for cookie_name, cookie_value in cookies.items():
+        args.extend([cookie_flag, f'{cookie_name}={cookie_value}'])
+        clean_args.extend([cookie_flag, f'{cookie_name}={cookie_value}'])
 
 
 def _find_imports_block_end_line(file_content: str) -> int:

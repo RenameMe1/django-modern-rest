@@ -10,7 +10,7 @@
     "paths": {
       "/api/v1/complex": {
         "get": {
-          "operationId": "getApiV1Complex",
+          "operationId": "getBuildControllerLocalsSsecontrollerApiV1Complex",
           "responses": {
             "200": {
               "description": "OK",
@@ -21,12 +21,13 @@
                   },
                   "required": true
                 },
-                "Connection": {
+                "X-Accel-Buffering": {
                   "schema": {
                     "type": "string"
-                  }
+                  },
+                  "required": true
                 },
-                "X-Accel-Buffering": {
+                "Connection": {
                   "schema": {
                     "type": "string"
                   },
@@ -206,7 +207,7 @@
     "paths": {
       "/api/v1/overridden": {
         "get": {
-          "operationId": "getApiV1Overridden",
+          "operationId": "getBuildControllerLocalsSsecontrollerApiV1Overridden",
           "responses": {
             "200": {
               "description": "OK",
@@ -217,12 +218,13 @@
                   },
                   "required": true
                 },
-                "Connection": {
+                "X-Accel-Buffering": {
                   "schema": {
                     "type": "string"
-                  }
+                  },
+                  "required": true
                 },
-                "X-Accel-Buffering": {
+                "Connection": {
                   "schema": {
                     "type": "string"
                   },
@@ -343,7 +345,7 @@
     "paths": {
       "/api/v1/sse": {
         "get": {
-          "operationId": "getApiV1Sse",
+          "operationId": "getBuildControllerLocalsSsecontrollerApiV1Sse",
           "responses": {
             "200": {
               "description": "OK",
@@ -354,12 +356,13 @@
                   },
                   "required": true
                 },
-                "Connection": {
+                "X-Accel-Buffering": {
                   "schema": {
                     "type": "string"
-                  }
+                  },
+                  "required": true
                 },
-                "X-Accel-Buffering": {
+                "Connection": {
                   "schema": {
                     "type": "string"
                   },
