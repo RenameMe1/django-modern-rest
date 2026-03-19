@@ -213,6 +213,13 @@ Let's model this with perfect type-safety and state-of-the-art OpenAPI schema.
 This will also generate a correct OpenAPI spec
 with all the logical cases covered.
 
+Users can also enable default ``ping`` events using ``ping_interval`` parameter. 
+
+.. literalinclude:: /examples/sse/event_ping.py
+   :language: python
+   :linenos:
+
+
 If you are still not happy with the resulting OpenAPI schema,
 you can fully customize it using your serializer's official docs.
 For example, ``pydantic`` uses ``__get_pydantic_json_schema__`` method

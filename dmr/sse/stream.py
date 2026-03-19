@@ -75,7 +75,7 @@ class SSEStreamingResponse(HttpResponseBase):
             headers: Headers to be set on the response.
             validate_events: Should all produced events be validated
                 against *event_model*.
-            ping_interval: interval
+            ping_interval: Interval in seconds between keepalive pings.
 
         """
         headers = {} if headers is None else dict(headers)

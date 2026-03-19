@@ -178,7 +178,7 @@ def sse(  # noqa: WPS211, WPS234
             SSE endpoints must use instances
             of :class:`~dmr.security.AsyncAuth`.
             Set it to ``None`` to disable auth for this SSE controller.
-        ping_interval: interval
+        ping_interval: Interval in seconds between keepalive pings.
 
     .. important::
 
