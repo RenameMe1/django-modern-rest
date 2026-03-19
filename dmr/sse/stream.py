@@ -166,7 +166,6 @@ class SSEStreamingResponse(HttpResponseBase):
         )
 
         async with context:
-
             if self.ping_interval > 0:
                 stream_content = self._ping_stream
             else:
