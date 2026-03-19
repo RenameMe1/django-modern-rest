@@ -198,6 +198,8 @@ class SSEStreamingResponse(HttpResponseBase):
             )
 
             if not done:
+                # We don't create intermediate `SSEvent` instances
+                # for performance reasons here.
                 yield b'ping\r\n\r\n'
                 continue
 
