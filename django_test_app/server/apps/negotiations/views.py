@@ -4,7 +4,7 @@ from typing import Annotated, Any, TypeAlias, final
 from xml.parsers import expat
 
 import pydantic
-import xmltodict
+import xmltodict_rs as xmltodict
 from django.http import HttpRequest, HttpResponse
 from typing_extensions import override
 
@@ -44,7 +44,7 @@ _CallableAny: TypeAlias = Callable[..., Any]
 class XmlParser(Parser):
     __slots__ = ()
 
-    content_type = 'application/xml'
+    content_type = ContentType.xml
 
     @override
     def parse(
@@ -84,7 +84,7 @@ class XmlParser(Parser):
 class XmlRenderer(Renderer):
     __slots__ = ()
 
-    content_type = 'application/xml'
+    content_type = ContentType.xml
 
     @override
     def render(

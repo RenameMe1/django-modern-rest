@@ -62,12 +62,25 @@ Now you have your REST API that returns fully typed model responses
 and can work with :class:`~django.db.models.query.QuerySet`
 and :class:`~django.db.models.Model` instances.
 
+django-mantle
+~~~~~~~~~~~~~
+
+If you want to automate this part and automatically
+convert ``QuerySet`` into typed models, you can use
+`django-mantle <https://noumenal.es/mantle/>`_
+which is built just for this purpose:
+
+.. literalinclude:: /examples/integrations/django_mantle.py
+  :caption: views.py
+  :language: python
+  :linenos:
+
 
 CSRF
 ----
 
 Django supports
-`Cross Site Request Forgery <https://docs.djangoproject.com/en/6.0/ref/csrf/>`_
+`Cross Site Request Forgery <https://docs.djangoproject.com/en/stable/ref/csrf/>`_
 protection.
 
 By default we exempt all controllers from CSRF checks, unless:
@@ -207,7 +220,22 @@ is required.
 Everything just works.
 
 
-ETag
-----
+Conditional requests (ETag)
+---------------------------
 
-TODO
+Django has built-in support for conditional request processing
+(``If-None-Match``, ``If-Modified-Since``, ``304 Not Modified``):
+
+With ``django-modern-rest`` you can integrate it via
+:func:`~dmr.decorators.wrap_middleware`
+and :func:`django.views.decorators.http.condition`.
+
+
+.. literalinclude:: ../../django_test_app/server/apps/etag/views.py
+  :caption: etag.py
+  :language: python
+  :linenos:
+
+.. seealso::
+
+    https://docs.djangoproject.com/en/stable/topics/conditional-view-processing

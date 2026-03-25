@@ -5,12 +5,14 @@ from typing import (
     TYPE_CHECKING,
     Any,
     ClassVar,
+    Final,
     Generic,
     TypeAlias,
     TypeVar,
     get_args,
 )
 
+from django.utils.translation import gettext_lazy as _
 from typing_extensions import override
 
 from dmr.exceptions import (
@@ -29,10 +31,12 @@ from dmr.metadata import (
     EndpointMetadata,
     ResponseSpec,
     ResponseSpecProvider,
+    get_annotated_metadata,
 )
 from dmr.negotiation import get_conditional_types
 from dmr.openapi.objects import (
     MediaType,
+    MediaTypeMetadata,
     Parameter,
     Reference,
     RequestBody,
@@ -45,6 +49,17 @@ if TYPE_CHECKING:
     from dmr.endpoint import Endpoint
     from dmr.openapi.core.context import OpenAPIContext
     from dmr.serializer import BaseSerializer
+
+_UNNAMED_PATH_PARAMS_MSG: Final = _(
+    'Path {cls} with field_model={field_model}'
+    ' does not allow unnamed path parameters'
+    ' args={args}',
+)
+_UNSUPPORTED_FILE_PARSER_MSG: Final = _(
+    'Trying to parse files with {parser_name}'
+    ' that does not support'
+    ' SupportsFileParsing protocol',
+)
 
 _QueryT = TypeVar('_QueryT')
 _BodyT = TypeVar('_BodyT')
@@ -405,7 +420,7 @@ class Body(ComponentParser, Generic[_BodyT]):
 
     @override
     @classmethod
-    def get_schema(
+    def get_schema(  # noqa: WPS210
         cls,
         model: Any,
         metadata: EndpointMetadata,
@@ -413,22 +428,34 @@ class Body(ComponentParser, Generic[_BodyT]):
         context: 'OpenAPIContext',
     ) -> list[Parameter | Reference] | RequestBody:
         schema = context.generators.schema(model, serializer)
+        conditional_types = cls.conditional_types(model)
         conditional_schemas = {
             content_type: context.generators.schema(
                 conditional_model,
                 serializer,
             )
-            for content_type, conditional_model in cls.conditional_types(
-                model,
-            ).items()
+            for content_type, conditional_model in conditional_types.items()
         }
-        return RequestBody(
-            content={
-                parser.content_type: MediaType(
-                    schema=conditional_schemas.get(parser.content_type, schema),
+        media_types: dict[str, MediaType] = {}
+        for parser in metadata.parsers.values():
+            media_type_meta = (
+                get_annotated_metadata(
+                    conditional_types.get(parser.content_type, model),
+                    MediaTypeMetadata,
                 )
-                for parser in metadata.parsers.values()
-            },
+                or MediaTypeMetadata()
+            )
+            media_types[parser.content_type] = MediaType(
+                schema=conditional_schemas.get(parser.content_type, schema),
+                example=media_type_meta.example,
+                examples=media_type_meta.examples,
+                encoding=media_type_meta.encoding,
+                item_encoding=media_type_meta.item_encoding,
+                prefix_encoding=media_type_meta.prefix_encoding,
+            )
+
+        return RequestBody(
+            content=media_types,
             required=True,
             description=context.registries.schema.maybe_resolve_reference(
                 schema,
@@ -602,8 +629,11 @@ class Path(ComponentParser, Generic[_PathT]):
     ) -> Any:
         if blueprint.args:
             raise RequestSerializationError(
-                f'Path {cls} with {field_model=} does not allow '
-                f'unnamed path parameters {blueprint.args=}',
+                _UNNAMED_PATH_PARAMS_MSG.format(
+                    cls=cls,
+                    field_model=repr(field_model),
+                    args=repr(blueprint.args),
+                ),
             )
         return blueprint.kwargs
 
@@ -692,7 +722,7 @@ class FileMetadata(ComponentParser, Generic[_FileMetadataT]):
     Parses files metadata from :attr:`django.http.HttpRequest.FILES`.
 
     Django handles files itself natively, we don't need to do anything
-    in ``django_modern_rest``. Everything just works, including all
+    in ``django-modern-rest``. Everything just works, including all
     Django's advanced file features like customizing the storage backends.
 
     But, we need a way to represent and validate the metadata.
@@ -755,7 +785,7 @@ class FileMetadata(ComponentParser, Generic[_FileMetadataT]):
 
     .. seealso::
 
-        https://docs.djangoproject.com/en/6.0/topics/http/file-uploads/
+        https://docs.djangoproject.com/en/stable/topics/http/file-uploads/
 
     """
 
@@ -775,8 +805,9 @@ class FileMetadata(ComponentParser, Generic[_FileMetadataT]):
         parser = endpoint.request_negotiator(blueprint.request)
         if not isinstance(parser, SupportsFileParsing):
             raise RequestSerializationError(
-                f'Trying to parse files with {type(parser).__name__!r} '
-                'that does not support SupportsFileParsing protocol',
+                _UNSUPPORTED_FILE_PARSER_MSG.format(
+                    parser_name=repr(type(parser).__name__),
+                ),
             )
 
         # NOTE: double parsing does not happen.
@@ -864,6 +895,7 @@ class FileMetadata(ComponentParser, Generic[_FileMetadataT]):
                 parser.content_type: cls.schema_metadata.media_type(
                     conditional_schemas.get(parser.content_type, schema),
                     model,
+                    parser,
                     context,
                 )
                 for parser in metadata.parsers.values()

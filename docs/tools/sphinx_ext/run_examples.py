@@ -22,17 +22,19 @@ import subprocess  # noqa: S404
 import sys
 import time
 from collections.abc import Iterator
-from contextlib import contextmanager, redirect_stderr
+from contextlib import contextmanager, redirect_stderr, suppress
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, ClassVar, Final, TypeAlias, cast
 from urllib.parse import urlencode
 
+import django
 import httpx
 import uvicorn
-import xmltodict
+import xmltodict_rs as xmltodict
 from django.conf import settings
 from django.core.handlers.asgi import ASGIHandler
+from django.db import IntegrityError
 from django.test import override_settings
 from django.urls import URLPattern, clear_url_caches, path
 from django.views import View
@@ -74,7 +76,9 @@ def _get_mp_context() -> Any:
         ) from error
 
 
-_MP_CONTEXT = _get_mp_context()
+_MP_CONTEXT: Final = _get_mp_context()
+
+_BASE_DIR: Final = Path(__file__).parent.parent.parent.parent
 
 _PATH_TO_TMP_EXAMPLES: Final = '_build/_tmp_example/'
 _RGX_RUN: Final = re.compile(r'# +?run:(.*)')
@@ -87,6 +91,8 @@ _OpenAPIRunArgs: TypeAlias = dict[str, Any]
 
 logger: Final = logging.getLogger(__name__)
 ignore_missing_output: Final = True
+
+db_populated = False
 
 
 class _StartupError(RuntimeError):
@@ -212,7 +218,17 @@ def _get_available_port() -> int:
             return cast(int, sock.getsockname()[1])
 
 
-class _BaseBuilder:
+def _ensure_project_import_paths() -> None:
+    """Ensure external examples can import project modules."""
+    cwd = Path.cwd()
+    project_root = cwd.parent if cwd.name == 'docs' else cwd
+    for path_item in (project_root, project_root / 'django_test_app'):
+        path_string = str(path_item)
+        if path_item.exists() and path_string not in sys.path:
+            sys.path.insert(0, path_string)
+
+
+class _BaseBuilder:  # noqa: WPS214
     def __init__(self, file_path: Path, config: _AppRunArgs) -> None:
         """Initialize application builder with file path and configuration."""
         self.file_path = file_path
@@ -221,7 +237,9 @@ class _BaseBuilder:
     def build_app(self) -> ASGIHandler:
         """Build and return configured ASGI application."""
         self._configure_settings()
-        return self._build_app()
+        app = self._build_app()
+        self._populate_db()
+        return app
 
     def _configure_settings(self) -> None:
         if settings.configured:
@@ -234,18 +252,65 @@ class _BaseBuilder:
             SECRET_KEY='dummy-key-for-examples',  # noqa: S106
             INSTALLED_APPS=[
                 'django.contrib.auth',
+                'django.contrib.sessions',
                 'django.contrib.contenttypes',
                 'dmr',
                 'dmr.security.jwt.blocklist',
             ],
-            MIDDLEWARE=[],
+            MIDDLEWARE=[
+                'django.middleware.security.SecurityMiddleware',
+                'django.contrib.sessions.middleware.SessionMiddleware',
+                'django.middleware.common.CommonMiddleware',
+                'django.middleware.csrf.CsrfViewMiddleware',
+                'django.contrib.auth.middleware.AuthenticationMiddleware',
+                'django.middleware.locale.LocaleMiddleware',
+                'django.contrib.messages.middleware.MessageMiddleware',
+                'django.middleware.clickjacking.XFrameOptionsMiddleware',
+            ],
             USE_TZ=True,
+            USE_I18N=True,
+            LANGUAGE_CODE='en-us',
+            LOCALE_PATHS=[str(_BASE_DIR / 'dmr' / 'locale')],
+            LANGUAGES=(
+                ('en', 'English'),
+                ('ru', 'Russian'),
+            ),
+            DATABASES={
+                'default': {
+                    'ENGINE': 'django.db.backends.sqlite3',
+                    'NAME': '_build/test.db',
+                },
+            },
+            LOGGING_CONFIG=None,
             # Needed for HTTP Basic auth example:
             HTTP_BASIC_USERNAME='admin',
             HTTP_BASIC_PASSWORD='pass',  # noqa: S106
         )
+        django.setup()
+
+    def _populate_db(self) -> None:
+        global db_populated  # noqa: PLW0603, WPS420
+        if not self.config.get('populate_db') or db_populated:
+            return
+
+        from django.core.management.commands import migrate  # noqa: PLC0415
+
+        migrate.Command().run_from_argv(['python', 'run_examples.py'])
+
+        from django.contrib.auth.models import User  # noqa: PLC0415
+
+        with suppress(IntegrityError):
+            User.objects.create_user(
+                'test_user',
+                email='test@example.com',
+                password='password',  # noqa: S106
+            )
+
+        db_populated = True
 
     def _build_app(self) -> ASGIHandler:
+        _ensure_project_import_paths()
+
         file_path_without_ext = self.file_path.with_suffix('')
         module_name = str(file_path_without_ext).replace(os.sep, '.')
 
@@ -297,7 +362,7 @@ class _BaseBuilder:
             return module.urlpatterns  # type: ignore[no-any-return]
 
         controller_cls = self._find_controller(module)
-        url_path = _get_url_path_from_run_args(
+        url_path = _get_route_path_from_run_args(
             self.config,
         ).lstrip('/')  # noqa: WPS226
         return [
@@ -323,7 +388,7 @@ class _OpenAPIBuilder(_BaseBuilder):
             return urlpatterns
 
         controller_cls = self._find_controller(module)
-        url_path = _get_url_path_from_run_args(
+        url_path = _get_route_path_from_run_args(
             self.config,
         ).lstrip('/')  # noqa: WPS226
 
@@ -351,6 +416,14 @@ def _get_url_path_from_run_args(run_args: _AppRunArgs) -> str:
         return url
     controller_name = run_args['controller'].lower()
     return f'/api/{controller_name}/'
+
+
+def _get_route_path_from_run_args(run_args: _AppRunArgs) -> str:
+    url_pattern = run_args.get('url_pattern')
+    if url_pattern:
+        assert isinstance(url_pattern, str)  # noqa: S101
+        return url_pattern
+    return _get_url_path_from_run_args(run_args)
 
 
 @contextmanager
@@ -413,6 +486,34 @@ def _shutdown_process(proc: multiprocessing.Process) -> None:
 
 def _get_module_name(file_path: Path) -> str:
     return str(file_path.with_suffix('')).replace(os.sep, '.')
+
+
+def _resolve_tmp_example_relative_path(
+    file_path: Path,
+    docs_dir: Path,
+) -> Path:
+    """Return a stable relative path for temp examples inside docs/_build."""
+    if file_path.is_relative_to(docs_dir):
+        return file_path.relative_to(docs_dir)
+
+    project_root = docs_dir.parent
+    if file_path.is_relative_to(project_root):
+        return Path('_external') / file_path.relative_to(project_root)
+
+    return Path('_external') / file_path.name
+
+
+def _resolve_example_file_for_execution(file_path: Path) -> Path:
+    """Resolve example path for importing regardless of current cwd."""
+    cwd = Path.cwd()
+    if file_path.is_relative_to(cwd):
+        return file_path.relative_to(cwd)
+
+    project_root = cwd.parent if cwd.name == 'docs' else cwd
+    if file_path.is_relative_to(project_root):
+        return file_path.relative_to(project_root)
+
+    return file_path
 
 
 def _wait_for_app_startup(port: int, proc: multiprocessing.Process) -> None:
@@ -682,7 +783,7 @@ def _add_body_and_content_type(  # noqa: C901, WPS210, WPS213, WPS231
         'Content-Type',
         None,
     )
-    if content_type == 'application/json' or content_type is None:
+    if content_type == 'application/json' or content_type is None:  # noqa: WPS223
         body_data = json.dumps(run_args['body'])
         args.extend(['-d', body_data])
         clean_args.extend(['-d', body_data])
@@ -711,6 +812,10 @@ def _add_body_and_content_type(  # noqa: C901, WPS210, WPS213, WPS231
             clean_args.extend(['-F', f'{body_key}=@{body_value}'])
             body_value = str(app_file.parent / body_value)
             args.extend(['-F', f'{body_key}=@{body_value}'])
+    elif content_type == 'application/msgpack':
+        source = run_args['body']
+        args.extend(['--data-binary', f'@{source}'])
+        clean_args.extend(['--data-binary', f'@{source}'])
     else:
         raise RuntimeError(f'{content_type} is not supported')
 
@@ -812,7 +917,7 @@ class LiteralInclude(_LiteralInclude):  # noqa: WPS214
 
         nodes = self._generate_nodes(file_path, imports_data)
 
-        example_file = file_path.relative_to(Path.cwd())
+        example_file = _resolve_example_file_for_execution(file_path)
         executed_result = _exec_examples(example_file, run_args)
         openapi_result = _exec_openapi_examples(example_file, openapi_args)
 
@@ -1076,12 +1181,14 @@ class LiteralInclude(_LiteralInclude):  # noqa: WPS214
     ) -> None:
         cwd = Path.cwd()
         docs_dir = cwd if cwd.name == 'docs' else cwd / 'docs'
+        relative_example_path = _resolve_tmp_example_relative_path(
+            file_path,
+            docs_dir,
+        )
         tmp_file = (
             docs_dir
             / _PATH_TO_TMP_EXAMPLES
-            / str(
-                file_path.relative_to(docs_dir),
-            ).replace('/', '_')
+            / str(relative_example_path).replace('/', '_')
         )
 
         self.arguments[0] = f'/{tmp_file.relative_to(docs_dir)!s}'

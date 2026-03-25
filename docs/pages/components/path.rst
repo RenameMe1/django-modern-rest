@@ -36,8 +36,8 @@ Django supports multiple pre-defined path converter types:
 
 .. seealso::
 
-  - https://docs.djangoproject.com/en/6.0/topics/http/urls/
-  - https://docs.djangoproject.com/en/6.0/ref/urlresolvers/
+  - https://docs.djangoproject.com/en/stable/topics/http/urls/
+  - https://docs.djangoproject.com/en/stable/ref/urlresolvers/
 
 The main downside of this method is that ``self.kwargs`` is typed
 as ``dict[str, Any]``. Which is not always ideal.
@@ -115,6 +115,13 @@ What is the difference from the raw ``path()`` model?
 
   Make sure that your ``path()`` URL pattern and ``Path`` model fields match.
   We don't automatically validate it.
+
+
+Customizing OpenAPI metadata for Path
+-------------------------------------
+
+See :ref:`customizing_parameter_openapi`.
+
 
 API Reference
 -------------
