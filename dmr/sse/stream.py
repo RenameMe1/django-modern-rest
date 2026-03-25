@@ -81,7 +81,7 @@ class SSEStreamingResponse(HttpResponseBase):
         headers = {} if headers is None else dict(headers)
         headers.update({
             'Cache-Control': 'no-cache',
-            'Content-Type': sse_renderer.content_type,
+            'Content-Type': str(sse_renderer.content_type),
             'X-Accel-Buffering': 'no',
         })
         if not settings.DEBUG:
@@ -93,7 +93,7 @@ class SSEStreamingResponse(HttpResponseBase):
             })
 
         super().__init__(headers=headers, status=HTTPStatus.OK)
-        self._streaming_content = streaming_content
+        self._streaming_content = aiter(streaming_content)
         self.serializer = serializer
         self.regular_renderer = regular_renderer
         self.sse_renderer = sse_renderer
@@ -193,7 +193,7 @@ class SSEStreamingResponse(HttpResponseBase):
                 event_task = asyncio.create_task(self._next_event())
 
             done, _ = await asyncio.wait(
-                {event_task},
+                [event_task],
                 timeout=self.ping_interval,
             )
 

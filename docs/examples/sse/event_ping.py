@@ -18,7 +18,7 @@ async def produce_user_events() -> AsyncIterator[SSEvent[bytes]]:
         yield SSEvent(b'message')
 
 
-@sse(MsgspecSerializer, ping_interval=1.5)
+@sse(MsgspecSerializer, ping_interval=0)
 async def user_events(
     request: HttpRequest,
     context: SSEContext,

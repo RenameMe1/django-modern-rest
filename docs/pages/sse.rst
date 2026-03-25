@@ -178,6 +178,20 @@ and to disable it in production.
 You can do so by setting :data:`~dmr.settings.Settings.validate_responses`
 to ``False`` in production. It will also disable ``validate_events`` as well.
 
+Ping events
+-----------
+
+By default we provide ping events every 15 seconds when there hasn't been any message,
+to prevent closing the connection, as suggested in the 
+`specification <https://html.spec.whatwg.org/multipage/server-sent-events.html#authoring-notes>`_.
+
+Users can disable ``ping`` events using ``ping_interval`` parameter.
+
+.. literalinclude:: /examples/sse/event_ping.py
+   :language: python
+   :linenos:
+
+
 
 Modeling business events
 ------------------------
@@ -212,12 +226,6 @@ Let's model this with perfect type-safety and state-of-the-art OpenAPI schema.
 
 This will also generate a correct OpenAPI spec
 with all the logical cases covered.
-
-Users can also enable default ``ping`` events using ``ping_interval`` parameter.
-
-.. literalinclude:: /examples/sse/event_ping.py
-   :language: python
-   :linenos:
 
 
 If you are still not happy with the resulting OpenAPI schema,

@@ -133,6 +133,7 @@ class _BaseSSEController(Controller[_SerializerT_co]):
         *,
         headers: Mapping[str, str] | None = None,
         cookies: Mapping[str, NewCookie] | None = None,
+        ping_interval: float,
     ) -> SSEStreamingResponse:
         streaming_response = self.sse_streaming_response_cls(
             streaming_content,
@@ -142,6 +143,7 @@ class _BaseSSEController(Controller[_SerializerT_co]):
             regular_renderer=self.regular_renderer,
             sse_renderer=self.sse_renderer,
             validate_events=self.validate_events,
+            ping_interval=ping_interval,
         )
         for cookie_key, cookie in (cookies or {}).items():
             streaming_response.set_cookie(
@@ -176,7 +178,7 @@ def sse(  # noqa: WPS211, WPS234
     ] = SSEStreamingResponse,
     metadata_cls: type[SSEEndpointMetadata] = SSEEndpointMetadata,
     auth: Sequence[AsyncAuth] | None = (),
-    ping_interval: float = 0,
+    ping_interval: float = 15,
 ) -> Callable[
     [
         Callable[
@@ -332,6 +334,7 @@ def sse(  # noqa: WPS211, WPS234
             _sse_streaming_response_cls=sse_streaming_response_cls,
             _event_model=event_model,
             _metadata_cls=metadata_cls,
+            ping_interval=ping_interval,
         )
 
     return decorator
@@ -362,6 +365,7 @@ def _build_controller(  # noqa: WPS211, WPS234
     _sse_streaming_response_cls: type[SSEStreamingResponse],
     _event_model: Any,
     _metadata_cls: type[SSEEndpointMetadata],
+    ping_interval: float,
 ) -> type[Controller[_SerializerT]]:
     # Some parameters names have a `_` prefix, because writing
     # `event_model = `event_model` inside a class is a `NameError`.
@@ -401,6 +405,7 @@ def _build_controller(  # noqa: WPS211, WPS234
                 response.streaming_content,
                 headers=response.headers,
                 cookies=response.cookies,
+                ping_interval=ping_interval,
             )
 
         # FIXME: don't look at this, this will be removed in
