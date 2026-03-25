@@ -182,7 +182,7 @@ Ping events
 -----------
 
 By default we provide ping events every 15 seconds when there hasn't been any message,
-to prevent closing the connection, as suggested in the 
+to prevent closing the connection, as suggested in the
 `specification <https://html.spec.whatwg.org/multipage/server-sent-events.html#authoring-notes>`_.
 
 Users can disable ``ping`` events using ``ping_interval`` parameter.
