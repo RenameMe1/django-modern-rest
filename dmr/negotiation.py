@@ -5,17 +5,10 @@ from typing import TYPE_CHECKING, Any, Final, final
 from django.http.request import HttpRequest
 from django.utils.translation import gettext_lazy as _
 
-from dmr.exceptions import (
-    EndpointMetadataError,
-    RequestSerializationError,
-)
-from dmr.internal.negotiation import (
-    ConditionalType as _ConditionalType,
-)
+from dmr.exceptions import EndpointMetadataError, RequestSerializationError
+from dmr.internal.negotiation import ConditionalType as _ConditionalType
 from dmr.internal.negotiation import media_by_precedence
-from dmr.internal.negotiation import (
-    negotiate_renderer as _negotiate_renderer,
-)
+from dmr.internal.negotiation import negotiate_renderer as _negotiate_renderer
 from dmr.metadata import EndpointMetadata, get_annotated_metadata
 from dmr.parsers import Parser
 from dmr.renderers import Renderer
@@ -166,7 +159,7 @@ def request_parser(request: HttpRequest) -> Parser | None:
     .. note::
 
         Since request parsing is only used when there's
-        a :class:`dmr.components.Body` component,
+        a :data:`dmr.components.Body` component,
         there might be no parser.
 
     """

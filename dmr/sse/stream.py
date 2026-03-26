@@ -1,11 +1,4 @@
-import asyncio
-from collections.abc import (
-    AsyncIterator,
-    Callable,
-    Iterator,
-    Mapping,
-    Sequence,
-)
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from contextlib import aclosing, nullcontext
 from http import HTTPStatus
 from typing import Any, ClassVar, Final, TypeAlias
@@ -79,6 +72,8 @@ class SSEStreamingResponse(HttpResponseBase):
 
         """
         headers = {} if headers is None else dict(headers)
+        # Content-Type must be a str type, as wsgiref checks that
+        # to use str type.
         headers.update({
             'Cache-Control': 'no-cache',
             'Content-Type': str(sse_renderer.content_type),

@@ -15,7 +15,7 @@ You can create both ``required=True``
 (always must be present on the response object)
 and ``required=False`` headers (might be missing in some cases):
 
-.. literalinclude:: /examples/returning_responses/validate_headers.py
+.. literalinclude:: /examples/using_controller/validate_headers.py
   :caption: views.py
   :language: python
   :linenos:
@@ -34,7 +34,7 @@ With "raw endpoints" you can also use
 :class:`~dmr.headers.NewHeader` marker which can set headers
 with known values to the final response.
 
-.. literalinclude:: /examples/returning_responses/modify_headers.py
+.. literalinclude:: /examples/using_controller/modify_headers.py
   :caption: views.py
   :language: python
   :linenos:
@@ -79,22 +79,22 @@ to add new cookies with statically known values to "raw endpoints".
 Or :class:`~dmr.cookies.CookieSpec` with both types
 of endpoints to describe response cookies.
 
-.. literalinclude:: /examples/returning_responses/modify_cookies.py
+.. literalinclude:: /examples/using_controller/modify_cookies.py
   :caption: views.py
   :language: python
   :linenos:
-  :emphasize-lines: 17
+  :emphasize-lines: 16
 
 And you can set any cookies to :attr:`django.http.HttpResponse.cookies`
 with "real endpoints". Since we have strict schemas,
 it is required to describe the set cookies with
 :class:`~dmr.cookies.CookieSpec`:
 
-.. literalinclude:: /examples/returning_responses/validate_cookies.py
+.. literalinclude:: /examples/using_controller/validate_cookies.py
   :caption: views.py
   :language: python
   :linenos:
-  :emphasize-lines: 30-33, 40, 42, 45
+  :emphasize-lines: 23-24
 
 The last important thing about cookies
 is :attr:`~dmr.cookies.CookieSpec.skip_validation` attribute.

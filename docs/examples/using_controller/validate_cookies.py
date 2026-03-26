@@ -4,13 +4,7 @@ from http import HTTPStatus
 import pydantic
 from django.http import HttpResponse
 
-from dmr import (
-    Body,
-    Controller,
-    HeaderSpec,
-    ResponseSpec,
-    validate,
-)
+from dmr import Body, Controller, CookieSpec, NewCookie, ResponseSpec, validate
 from dmr.plugins.pydantic import PydanticSerializer
 
 
@@ -24,27 +18,25 @@ class UserController(
     @validate(
         ResponseSpec(
             UserModel,
-            status_code=HTTPStatus.OK,
-            headers={
-                'X-Created': HeaderSpec(),
-                'X-Our-Domain': HeaderSpec(required=False),
+            status_code=HTTPStatus.CREATED,
+            cookies={
+                'user_id': CookieSpec(),
+                'session': CookieSpec(max_age=1000, required=False),
             },
         ),
     )
     def post(self, parsed_body: Body[UserModel]) -> HttpResponse:
         uid = uuid.uuid4()
-        # This response would have an explicit status code `200`
-        # and one required header `X-Created` and one optional `X-Our-Domain`:
-        headers = {'X-Created': str(uid)}
+        # This response would have one required cookie `user_id`
+        # and one optional cookie `session`:
+        cookies = {'user_id': NewCookie(value=str(uid))}
         if '@ourdomain.com' in parsed_body.email:
-            headers['X-Our-Domain'] = 'true'
+            cookies['session'] = NewCookie(value='true', max_age=1000)
         return self.to_response(
             parsed_body,
-            status_code=HTTPStatus.OK,
-            headers=headers,
+            cookies=cookies,
         )
 
 
-# run: {"controller": "UserController", "method": "post", "body": {"email": "user@wms.org"}, "url": "/api/user/", "curl_args": ["-D", "-"]}  # noqa: ERA001, E501
 # run: {"controller": "UserController", "method": "post", "body": {"email": "user@ourdomain.com"}, "url": "/api/user/", "curl_args": ["-D", "-"]}  # noqa: ERA001, E501
 # openapi: {"controller": "UserController", "openapi_url": "/docs/openapi.json/"}  # noqa: ERA001, E501
