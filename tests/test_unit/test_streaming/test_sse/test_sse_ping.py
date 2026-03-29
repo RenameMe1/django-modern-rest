@@ -31,10 +31,13 @@ class _PingSSE(SSEController[PydanticSerializer]):
         *,
         produce_last: bool,
     ) -> AsyncIterator[SSEvent[int]]:
+        ping = self.streaming_ping_seconds
+        assert isinstance(ping, float)
+
         yield SSEvent(1)
-        await asyncio.sleep(self.streaming_ping_seconds + 0.1)  # one ping
+        await asyncio.sleep(ping + 0.1)  # one ping
         yield SSEvent(2)
-        await asyncio.sleep((2 * self.streaming_ping_seconds) + 0.1)  # two
+        await asyncio.sleep((2 * ping) + 0.1)  # two pings
         if produce_last:
             yield SSEvent(3)
 
