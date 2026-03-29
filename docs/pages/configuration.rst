@@ -291,6 +291,27 @@ HTTP Spec validation
   :members:
 
 
+Streaming
+---------
+
+.. data:: dmr.settings.Settings.validate_events
+
+  Default: ``None``
+
+  Should we validate the events in all streams?
+  Defaults to the value set in :data:`~dmr.settings.Settings.validate_responses`
+  for convenience if this value is ``None``.
+
+  To disable the event validation globally, use:
+
+  .. code-block:: python
+    :caption: settings.py
+
+    >>> DMR_SETTINGS = {
+    ...     Settings.validate_events: False,
+    ... }
+
+
 OpenAPI
 -------
 
@@ -307,7 +328,6 @@ OpenAPI
   .. code-block:: python
     :caption: settings.py
 
-    >>> from dmr.settings import HttpSpec
     >>> from dmr.openapi.config import OpenAPIConfig
 
     >>> DMR_SETTINGS = {
@@ -354,6 +374,7 @@ OpenAPI
   - ``swagger``: base URL to ``swagger-ui-dist`` (without file name)
   - ``redoc``: full URL to ``redoc.standalone.js``
   - ``scalar``: full URL to ``@scalar/api-reference`` standalone bundle
+  - ``stoplight``: base URL to ``@stoplight/elements`` (without file name)
 
   You can also modify the exact versions that we use for each tool this way.
 
@@ -365,6 +386,7 @@ OpenAPI
     ...         'swagger': 'https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.1',
     ...         'redoc': 'https://cdn.redoc.ly/redoc/2.5.2/bundles/redoc.standalone.js',
     ...         'scalar': 'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.49.2/dist/browser/standalone.js',
+    ...         'stoplight': 'https://unpkg.com/@stoplight/elements@9.0.16',
     ...     },
     ... }
 

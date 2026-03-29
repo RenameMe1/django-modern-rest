@@ -1,19 +1,28 @@
+from typing import TYPE_CHECKING
+
 import pytest
 import schemathesis as st
 import tracecov
 from django.conf import LazySettings
 from django.urls import reverse
-from schemathesis.specs.openapi.schemas import OpenApiSchema
 from tracecov.schemathesis import helpers
 
 from django_test_app.server.wsgi import application
+
+if TYPE_CHECKING:
+    from django.contrib.auth.models import User
+    from schemathesis.specs.openapi.schemas import OpenApiSchema
 
 
 # The `db` fixture is required to enable database access.
 # When `st.openapi.from_wsgi()` makes a WSGI request, Django's request
 # lifecycle triggers database operations.
+# The `admin_user` fixture is required here so that `JWTAuth` can use
+# its credentials (username and password) for authentication.
+# This follows the `pytest-django` pattern for creating user fixtures:
+# https://github.com/pytest-dev/pytest-django/blob/main/pytest_django/fixtures.py#L483
 @pytest.fixture
-def api_schema(db: None) -> 'OpenApiSchema':
+def api_schema(db: None, admin_user: 'User') -> 'OpenApiSchema':
     """Load OpenAPI schema as a pytest fixture."""
     return st.openapi.from_wsgi(reverse('openapi'), application)
 
