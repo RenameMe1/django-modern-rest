@@ -57,7 +57,7 @@ class StreamingController(Controller[_SerializerT_co]):
     Base class for all streaming controllers.
 
     It can be used directly, but the most use-cases will be fine
-    with just using the specific streaming procotol.
+    with just using the specific streaming protocol.
     """
 
     streaming = True
